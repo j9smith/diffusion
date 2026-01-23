@@ -157,3 +157,32 @@ class DenoisingUNet(nn.Module):
 
         h = self.out_conv(self.act(self.out_norm(h)))
         return h
+    
+    @torch.no_grad()
+    def sample(self, device, beta_schedule, n_samples: int = 24, T: int = 1000):
+        xt = torch.randn(size=(n_samples, 3, 32, 32), device=device)
+        alphas = 1 - beta_schedule
+        alpha_hats = torch.cumprod(alphas, dim=0).to(device)
+
+        for t in reversed(range(T)):
+            t_batch = torch.full((n_samples,), t, device=device)
+
+            alpha_hat_t = alpha_hats[t_batch].view(n_samples, 1, 1, 1)
+            alpha_hat_t_prev = alpha_hats[t_batch - 1].view(n_samples, 1, 1, 1)
+
+            coef1 = 1 / torch.sqrt(alphas[t])
+            coef2 = (1 - alphas[t]) / torch.sqrt(1 - alpha_hat_t)
+
+            eps_theta = self.forward(xt, t_batch)
+
+            mu = coef1 * (xt - (coef2 * eps_theta))
+
+            if t == 0: 
+                xt = mu
+            else:
+                beta_tilde = ((1 - alpha_hat_t_prev) / (1 - alpha_hat_t)) * beta_schedule[t]
+                sigma = torch.sqrt(beta_tilde)
+                z = torch.randn_like(xt)
+                xt = mu + (sigma * z)
+
+        return xt
