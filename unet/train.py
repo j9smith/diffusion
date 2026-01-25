@@ -1,12 +1,13 @@
 import torch
 import torch.nn as nn
-import unet
 from unet import DenoisingUNet
 import time
+from torch.utils.tensorboard import SummaryWriter
+import os
 
 def step(model, x0, alpha_hats, T, device):
     batch_size = x0.shape[0]
-    t = torch.randint(low=1, high=T, size=(batch_size,), device=device)
+    t = torch.randint(low=0, high=T, size=(batch_size,), device=device)
     alpha_hats = alpha_hats[t].view(batch_size, 1, 1, 1)
     eps = torch.randn((batch_size, 3, 32, 32), device=device)
 
@@ -15,6 +16,7 @@ def step(model, x0, alpha_hats, T, device):
     return eps, model(xt, t)
 
 def train(dataloader, epochs, T, beta_schedule, device):
+    writer = SummaryWriter(log_dir='runs/')
     model = DenoisingUNet().to(device)
     model.train()
 
@@ -42,13 +44,20 @@ def train(dataloader, epochs, T, beta_schedule, device):
             optim.step()
 
             epoch_loss += loss.item()
-
+ 
         duration = time.time() - start
+        avg_loss = epoch_loss/batch_count
         if i % 10 == 0:
             print(
                 f"Epoch: {i+1}/{epochs} | "
-                f"Avg. batch loss: {epoch_loss/batch_count:.5f} | "
+                f"Avg. batch loss: {avg_loss:.5f} | "
                 f"Time taken: {duration:.2f}s"
             )
+        
+        if i % 100 == 0:
+            torch.save(model.state_dict(), f'weights/ddpm_unet_{i}.pt')
 
-    torch.save(model.state_dict(), 'ddpm_unet.pt')
+        writer.add_scalar('train/loss_epoch', avg_loss, i)
+
+    writer.close()
+    torch.save(model.state_dict(), 'weights/ddpm_unet_final.pt')
