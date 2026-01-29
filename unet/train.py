@@ -9,7 +9,7 @@ def step(model, x0, alpha_hats, T, device):
     batch_size = x0.shape[0]
     t = torch.randint(low=0, high=T, size=(batch_size,), device=device)
     alpha_hats = alpha_hats[t].view(batch_size, 1, 1, 1)
-    eps = torch.randn((batch_size, 3, 32, 32), device=device)
+    eps = torch.randn_like(x0)
 
     xt = torch.sqrt(alpha_hats) * x0 + torch.sqrt(1 - alpha_hats) * eps
 
@@ -17,7 +17,10 @@ def step(model, x0, alpha_hats, T, device):
 
 def train(dataloader, epochs, T, beta_schedule, device):
     writer = SummaryWriter(log_dir='runs/')
-    model = DenoisingUNet().to(device)
+    os.makedirs("weights/2", exist_ok=True)
+    model = DenoisingUNet(use_attn=True).to(device)
+    model.load_state_dict(torch.load('weights/1/ddpm_unet_final.pt', map_location=device))
+
     model.train()
 
     alphas = 1 - beta_schedule
@@ -55,9 +58,9 @@ def train(dataloader, epochs, T, beta_schedule, device):
             )
         
         if i % 100 == 0:
-            torch.save(model.state_dict(), f'weights/ddpm_unet_{i}.pt')
+            torch.save(model.state_dict(), f'weights/2/ddpm_unet_{i}.pt')
 
-        writer.add_scalar('train/loss_epoch', avg_loss, i)
+        writer.add_scalar('train/loss_epoch', avg_loss, i+5000)
 
     writer.close()
-    torch.save(model.state_dict(), 'weights/ddpm_unet_final.pt')
+    torch.save(model.state_dict(), 'weights/2/ddpm_unet_final.pt')
